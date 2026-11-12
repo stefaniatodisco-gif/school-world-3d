@@ -1,0 +1,928 @@
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>School World 3D</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#111;color:white;font-family:Arial}
+canvas{display:block}
+#hud{position:absolute;inset:0;pointer-events:none}
+#top{position:absolute;top:12px;left:12px;right:12px;
+display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.panel{background:#18251fe8;border:2px solid #789b70;
+border-radius:8px;padding:10px 14px}
+#mission{position:absolute;top:76px;left:12px;
+width:min(330px,90vw);line-height:1.5}
+#help{position:absolute;right:12px;top:76px;
+width:225px;font-size:12px;line-height:1.6}
+#crosshair{position:absolute;left:50%;top:50%;
+transform:translate(-50%,-50%);font-size:26px;text-shadow:0 1px 5px black}
+#hotbar{position:absolute;bottom:18px;left:50%;
+transform:translateX(-50%);display:flex;gap:5px}
+.slot{width:65px;height:60px;background:#17251de8;
+border:2px solid #aaa;border-radius:7px;text-align:center;
+padding:5px;font-size:12px}
+.slot.active{border:3px solid #ffe45c}
+.slot b{display:block;font-size:20px}
+#message{position:absolute;bottom:95px;left:50%;
+transform:translateX(-50%);background:#14221ddd;
+padding:10px 18px;border-radius:8px;display:none;text-align:center}
+#start{position:absolute;inset:0;background:#101c17ee;
+display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
+#startbox{max-width:580px;background:#263d2c;
+border:3px solid #91c778;border-radius:15px;padding:30px}
+h1{color:#a6ed80;font-size:34px;margin:5px}
+button{border:0;border-radius:7px;background:#8bc85e;
+color:#14220d;font-weight:bold;padding:12px 17px;
+margin:5px;cursor:pointer;font-size:15px}
+button:hover{background:#b0ed7e}
+#modal{display:none;position:absolute;inset:0;background:#000b;
+align-items:center;justify-content:center;padding:15px;pointer-events:auto}
+#modalbox{background:#263c30;border:3px solid #a3df7d;
+border-radius:12px;padding:24px;width:min(480px,95vw);text-align:center}
+#answers button{display:block;width:100%;margin:8px 0}
+#close{background:#aaa;display:none}
+.small{font-size:12px;color:#c6d9c2}
+#progress{height:10px;background:#435344;border-radius:8px;overflow:hidden}
+#bar{height:100%;width:0;background:#a6e66d}
+</style>
+</head>
+<body>
+
+<div id="hud">
+ <div id="top">
+  <div class="panel">?? <span id="health">100</span> | ? XP: <span id="xp">0</span></div>
+  <div class="panel">SCHOOL WORLD 3D</div>
+  <div class="panel">?? <span id="selectedName">Legno</span>: <span id="amount">40</span></div>
+ </div>
+
+ <div id="mission" class="panel">
+  <b>?? MISSION BOARD</b>
+  <div id="missionTitle">1. ENGLISH – Build your house</div>
+  <div id="missionText">Build your own house!</div>
+  <div id="progress"><div id="bar"></div></div>
+  <small id="progressText">0 / 20 blocks</small>
+ </div>
+
+ <div id="help" class="panel">
+  <b>?? CONTROLLI</b><br>
+  W A S D – Muoversi<br>
+  Mouse – Guardarsi intorno<br>
+  Click sinistro – Rompere<br>
+  Click destro – Costruire<br>
+  1-5 – Scegliere blocco<br>
+  E – Interagire<br>
+  ESC – Sbloccare mouse
+ </div>
+
+ <div id="crosshair">+</div>
+ <div id="hotbar"></div>
+ <div id="message"></div>
+</div>
+
+<div id="start">
+ <div id="startbox">
+  <h1>? SCHOOL WORLD 3D</h1>
+  <p>Un mondo Minecraft dove costruisci, esplori e impari.</p>
+  <p>???? Costruisci una casa in inglese.</p>
+  <p>???? Completa le missioni del villaggio spagnolo.</p>
+  <p>?? Crea circuiti matematici e logici.</p>
+  <p class="small">WASD e mouse. Funziona su Chrome ed Edge.</p>
+  <button id="play">ENTRA NEL MONDO</button>
+ </div>
+</div>
+
+<div id="modal">
+ <div id="modalbox">
+  <h2 id="modalTitle">MISSIONE</h2>
+  <p id="modalQuestion"></p>
+  <div id="answers"></div>
+  <p id="modalFeedback"></p>
+  <button id="close">CONTINUA</button>
+ </div>
+</div>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,25,65);
+
+const camera=new THREE.PerspectiveCamera(
+75,innerWidth/innerHeight,.1,100);
+camera.position.set(0,1.7,10);
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x657b43,2));
+
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(-15,25,10);
+sun.castShadow=true;
+scene.add(sun);
+
+const materials={
+grass:new THREE.MeshLambertMaterial({color:0x62a943}),
+dirt:new THREE.MeshLambertMaterial({color:0x79502e}),
+wood:new THREE.MeshLambertMaterial({color:0x98602f}),
+stone:new THREE.MeshLambertMaterial({color:0x898d91}),
+brick:new THREE.MeshLambertMaterial({color:0xa74c37}),
+glass:new THREE.MeshLambertMaterial({
+color:0x91e5ef,transparent:true,opacity:.48}),
+leaves:new THREE.MeshLambertMaterial({color:0x286b35}),
+gold:new THREE.MeshLambertMaterial({color:0xe6c43e}),
+redstone:new THREE.MeshLambertMaterial({color:0xb72d28}),
+lamp:new THREE.MeshLambertMaterial({color:0xffe77c})
+};
+
+const cube=new THREE.BoxGeometry(1,1,1);
+const blocks=[];
+const blockMap=new Map();
+
+function key(x,y,z){return `${x},${y},${z}`;}
+
+function addBlock(x,y,z,type,removable=true){
+ const mesh=new THREE.Mesh(cube,materials[type]);
+ mesh.position.set(x,y,z);
+ mesh.castShadow=true;
+ mesh.receiveShadow=true;
+ mesh.userData={type,removable};
+ scene.add(mesh);
+ blocks.push(mesh);
+ blockMap.set(key(x,y,z),mesh);
+ return mesh;
+}
+
+function removeBlock(mesh){
+ if(!mesh||!mesh.userData.removable)return false;
+ scene.remove(mesh);
+ const i=blocks.indexOf(mesh);
+ if(i>=0)blocks.splice(i,1);
+ blockMap.delete(key(mesh.position.x,mesh.position.y,mesh.position.z));
+ return true;
+}
+
+// TERRENO
+for(let x=-18;x<=18;x++){
+ for(let z=-18;z<=18;z++){
+  addBlock(x,-.5,z,"grass",false);
+ }
+}
+
+// ALBERI
+function tree(x,z){
+ addBlock(x,.5,z,"wood",false);
+ addBlock(x,1.5,z,"wood",false);
+ for(let dx=-1;dx<=1;dx++)
+ for(let dz=-1;dz<=1;dz++)
+ for(let y=1;y<=3;y++){
+  if(Math.abs(dx)+Math.abs(dz)+Math.abs(y-2)<4)
+  addBlock(x+dx,y,z+dz,"leaves",false);
+ }
+}
+
+[[-12,-10],[-9,-13],[-15,-5],[-12,5],
+[13,9],[15,12],[11,14],[-15,14]].forEach(p=>tree(...p));
+
+// AREA CASA
+for(let x=3;x<=9;x++)
+for(let z=3;z<=9;z++)
+addBlock(x,0,z,"dirt",false);
+
+// VILLAGGIO
+function buildVillagerHouse(x,z){
+ for(let dx=0;dx<5;dx++)
+ for(let dz=0;dz<5;dz++)
+ addBlock(x+dx,.5,z+dz,"wood",false);
+
+ for(let dx=0;dx<5;dx++)
+ for(let dz=0;dz<5;dz++){
+  if(dx===0||dx===4||dz===0||dz===4){
+   for(let y=1;y<=3;y++)
+   addBlock(x+dx,y,z+dz,
+   (dx===2&&dz===0&&y<3)?"glass":"wood",false);
+  }
+ }
+ for(let dx=0;dx<5;dx++)
+ for(let dz=0;dz<5;dz++)
+ addBlock(x+dx,4,z+dz,"brick",false);
+}
+
+buildVillagerHouse(-11,-5);
+buildVillagerHouse(-5,-10);
+
+// PERSONAGGI
+function makeNPC(x,z,color=0xd59c66){
+ const group=new THREE.Group();
+
+ const body=new THREE.Mesh(
+ new THREE.BoxGeometry(.7,1,.5),
+ new THREE.MeshLambertMaterial({color:0x398a75}));
+ body.position.y=1;
+ group.add(body);
+
+ const head=new THREE.Mesh(
+ new THREE.BoxGeometry(.65,.65,.65),
+ new THREE.MeshLambertMaterial({color}));
+ head.position.y=1.85;
+ group.add(head);
+
+ const nose=new THREE.Mesh(
+ new THREE.BoxGeometry(.16,.2,.3),
+ new THREE.MeshLambertMaterial({color:0x9b6345}));
+ nose.position.set(0,1.82,.4);
+ group.add(nose);
+
+ group.position.set(x,0,z);
+ scene.add(group);
+ return group;
+}
+
+makeNPC(-8,-3);
+makeNPC(8,-8);
+
+// LABORATORIO REDSTONE
+for(let x=6;x<=10;x++)
+for(let z=-10;z<=-7;z++)
+addBlock(x,.5,z,"stone",false);
+
+addBlock(8,1.2,-7,"gold",false);
+addBlock(7,1.2,-7,"redstone",false);
+addBlock(9,1.2,-7,"lamp",false);
+
+/* INVENTARIO */
+
+const inventory={
+ wood:40,
+ stone:40,
+ brick:30,
+ glass:20,
+ dirt:30
+};
+
+const names={
+ wood:"Legno",
+ stone:"Pietra",
+ brick:"Mattoni",
+ glass:"Vetro",
+ dirt:"Terra"
+};
+
+const emojis={
+ wood:"??",
+ stone:"??",
+ brick:"??",
+ glass:"??",
+ dirt:"??"
+};
+
+let selected="wood";
+let xp=0;
+let health=100;
+let placedHouse=0;
+let stage=0;
+let spanishDone=0;
+let circuitDone=0;
+
+const hotbar=document.getElementById("hotbar");
+
+function renderHotbar(){
+ hotbar.innerHTML="";
+
+ Object.keys(inventory).forEach((type,i)=>{
+  const div=document.createElement("div");
+
+  div.className="slot"+
+   (selected===type?" active":"");
+
+  div.innerHTML=
+   `<b>${i+1} ${emojis[type]}</b>
+   ${names[type]}<br>${inventory[type]}`;
+
+  hotbar.appendChild(div);
+ });
+
+ document.getElementById("selectedName").textContent=
+ names[selected];
+
+ document.getElementById("amount").textContent=
+ inventory[selected];
+}
+
+function updateHUD(){
+ document.getElementById("health").textContent=health;
+ document.getElementById("xp").textContent=xp;
+
+ document.getElementById("missionTitle").textContent=
+ stage===0?"1. ENGLISH – Build your house":
+ stage===1?"2. ESPAÑOL – The village":
+ stage===2?"3. MATEMATICA – Redstone Lab":
+ "?? WORLD COMPLETED!";
+
+ document.getElementById("missionText").textContent=
+ stage===0?"Build a house with at least 20 blocks.":
+ stage===1?"Talk to the villager. Complete 3 Spanish challenges.":
+ stage===2?"Talk to the engineer and solve 3 circuit challenges.":
+ "Congratulations! You completed School World!";
+
+ const count=stage===0?placedHouse:
+ stage===1?spanishDone:circuitDone;
+
+ const goal=stage===0?20:3;
+
+ document.getElementById("bar").style.width=
+ Math.min(100,count/goal*100)+"%";
+
+ document.getElementById("progressText").textContent=
+ count+" / "+goal;
+
+ renderHotbar();
+}
+
+function showMessage(msg){
+ const el=document.getElementById("message");
+
+ el.textContent=msg;
+ el.style.display="block";
+
+ clearTimeout(showMessage.timer);
+
+ showMessage.timer=setTimeout(()=>{
+  el.style.display="none";
+ },2600);
+}
+
+/* CONTROLLI WASD E MOUSE */
+
+let yaw=0;
+let pitch=0;
+let locked=false;
+
+const keys={};
+
+const raycaster=new THREE.Raycaster();
+const center=new THREE.Vector2(0,0);
+
+document.getElementById("play").addEventListener("click",()=>{
+ document.getElementById("start").style.display="none";
+
+ camera.position.set(0,1.7,10);
+
+ renderer.render(scene,camera);
+
+ renderer.domElement.requestPointerLock();
+});
+
+document.addEventListener("pointerlockchange",()=>{
+ locked=document.pointerLockElement===renderer.domElement;
+});
+
+document.addEventListener("mousemove",e=>{
+ if(!locked)return;
+
+ yaw-=e.movementX*.002;
+ pitch-=e.movementY*.002;
+
+ pitch=Math.max(-1.45,Math.min(1.45,pitch));
+
+ camera.rotation.order="YXZ";
+ camera.rotation.set(pitch,yaw,0);
+});
+
+document.addEventListener("keydown",e=>{
+ keys[e.key.toLowerCase()]=true;
+
+ if(["1","2","3","4","5"].includes(e.key)){
+  selected=Object.keys(inventory)[Number(e.key)-1];
+  renderHotbar();
+ }
+
+ if(e.key.toLowerCase()==="e"){
+  interact();
+ }
+});
+
+document.addEventListener("keyup",e=>{
+ keys[e.key.toLowerCase()]=false;
+});
+
+function forwardVector(){
+ return new THREE.Vector3(
+  -Math.sin(yaw),0,-Math.cos(yaw)
+ );
+}
+
+function movePlayer(dt){
+
+ const speed=5*dt;
+
+ let move=new THREE.Vector3();
+
+ const forward=forwardVector();
+
+ const right=new THREE.Vector3(
+  Math.cos(yaw),0,-Math.sin(yaw)
+ );
+
+ if(keys.w)move.add(forward);
+ if(keys.s)move.sub(forward);
+ if(keys.d)move.add(right);
+ if(keys.a)move.sub(right);
+
+ if(move.length()>0){
+
+  move.normalize().multiplyScalar(speed);
+
+  const next=camera.position.clone().add(move);
+
+  const bx=Math.round(next.x);
+  const bz=Math.round(next.z);
+
+  const obstacle=blocks.some(b=>
+   Math.abs(b.position.x-bx)<.65 &&
+   Math.abs(b.position.z-bz)<.65 &&
+   b.position.y>0 &&
+   b.position.y<2.5
+  );
+
+  if(!obstacle){
+   camera.position.x=next.x;
+   camera.position.z=next.z;
+  }
+ }
+
+ camera.position.y=1.7;
+}
+
+/* MIRARE I BLOCCHI */
+
+function getTarget(){
+
+ raycaster.setFromCamera(center,camera);
+
+ const hits=raycaster.intersectObjects(blocks,false);
+
+ return hits.find(h=>h.distance<6)||null;
+}
+
+/* ROMPERE I BLOCCHI */
+
+function mine(){
+
+ const hit=getTarget();
+
+ if(!hit)return;
+
+ const mesh=hit.object;
+
+ if(!mesh.userData.removable){
+  showMessage("Questo blocco non si può rompere!");
+  return;
+ }
+
+ const type=mesh.userData.type;
+
+ if(removeBlock(mesh)){
+
+  inventory[type]++;
+
+  xp++;
+
+  showMessage("Hai raccolto: "+names[type]);
+
+  updateHUD();
+ }
+}
+
+/* COSTRUIRE */
+
+function place(){
+
+ if(inventory[selected]<=0){
+  showMessage("Non hai abbastanza blocchi!");
+  return;
+ }
+
+ const hit=getTarget();
+
+ if(!hit)return;
+
+ const normal=hit.face.normal.clone();
+
+ const pos=hit.object.position.clone().add(normal);
+
+ pos.set(
+  Math.round(pos.x),
+  Math.round(pos.y),
+  Math.round(pos.z)
+ );
+
+ if(pos.y<0||pos.y>12)return;
+
+ if(camera.position.distanceTo(pos)>6)return;
+
+ if(
+  Math.abs(pos.x-camera.position.x)<.8 &&
+  Math.abs(pos.z-camera.position.z)<.8 &&
+  Math.abs(pos.y-camera.position.y)<1.5
+ )return;
+
+ if(blockMap.has(key(pos.x,pos.y,pos.z)))return;
+
+ addBlock(
+  pos.x,pos.y,pos.z,selected,true
+ );
+
+ inventory[selected]--;
+
+ xp+=2;
+
+ // COSTRUZIONE CASA
+
+ if(
+  stage===0 &&
+  pos.x>=3 && pos.x<=9 &&
+  pos.z>=3 && pos.z<=9
+ ){
+
+  placedHouse++;
+
+  if(placedHouse>=20){
+
+   stage=1;
+
+   xp+=100;
+
+   showMessage("?? HOUSE COMPLETED! +100 XP");
+  }
+ }
+
+ updateHUD();
+}
+
+/* CLICK MOUSE */
+
+renderer.domElement.addEventListener("mousedown",e=>{
+
+ if(!locked)return;
+
+ if(e.button===0){
+  mine();
+ }
+
+ if(e.button===2){
+  place();
+ }
+
+});
+
+renderer.domElement.addEventListener("contextmenu",e=>{
+ e.preventDefault();
+});
+
+/* MISSIONI SCOLASTICHE */
+
+const modal=document.getElementById("modal");
+const modalTitle=document.getElementById("modalTitle");
+const modalQuestion=document.getElementById("modalQuestion");
+const answers=document.getElementById("answers");
+const feedback=document.getElementById("modalFeedback");
+const closeButton=document.getElementById("close");
+
+function openModal(title,question,options,onAnswer){
+
+ // LIBERA IL MOUSE PER RISPONDERE
+ if(document.pointerLockElement){
+  document.exitPointerLock();
+ }
+
+ modal.style.display="flex";
+
+ modalTitle.textContent=title;
+ modalQuestion.textContent=question;
+
+ answers.innerHTML="";
+ feedback.textContent="";
+ closeButton.style.display="none";
+
+ options.forEach((option,i)=>{
+
+  const b=document.createElement("button");
+
+  b.textContent=option;
+
+  b.onclick=()=>onAnswer(i);
+
+  answers.appendChild(b);
+
+ });
+}
+
+function finishModal(){
+
+ modal.style.display="none";
+
+ if(stage<3){
+  renderer.domElement.requestPointerLock();
+ }
+}
+
+closeButton.onclick=finishModal;
+
+function showResult(correct,message){
+
+ answers.innerHTML="";
+
+ feedback.textContent=message;
+
+ closeButton.style.display="inline-block";
+
+ if(correct){
+  xp+=30;
+  updateHUD();
+ }
+}
+
+/* ???? MISSIONI SPAGNOLO */
+
+function spanishQuestion(){
+
+ if(spanishDone>=3){
+  showMessage("Missione spagnola completata!");
+  return;
+ }
+
+ const qs=[
+
+ {
+  q:"El campesino dice: 'Necesito agua'. Cosa vuole?",
+  a:["Acqua","Legno","Pane"],
+  correct:0
+ },
+
+ {
+  q:"Come si traduce 'El caballo'?",
+  a:["Il cane","Il cavallo","Il gatto"],
+  correct:1
+ },
+
+ {
+  q:"'Buenos días' significa:",
+  a:["Buonanotte","Buon pomeriggio","Buongiorno"],
+  correct:2
+ },
+
+ {
+  q:"Come si dice 'Ho bisogno di cibo'?",
+  a:["Necesito comida","Tengo una casa","Buenos días"],
+  correct:0
+ },
+
+ {
+  q:"'La puerta está abierta' significa:",
+  a:["La finestra è chiusa","La porta è aperta","La casa è grande"],
+  correct:1
+ }
+
+ ];
+
+ const q=qs[Math.floor(Math.random()*qs.length)];
+
+ openModal(
+  "???? ESPAÑOL – VILLAGE QUEST",
+  q.q,
+  q.a,
+  i=>{
+
+   if(i===q.correct){
+
+    spanishDone++;
+
+    showResult(true,"¡Muy bien! Risposta corretta! +30 XP");
+
+    if(spanishDone>=3){
+
+     stage=2;
+
+     xp+=100;
+
+     feedback.textContent+=
+      " Hai sbloccato il laboratorio matematico!";
+
+    }
+
+   }else{
+
+    showResult(false,
+    "Non è corretto. Riprova con un altro abitante!");
+
+   }
+
+   updateHUD();
+
+  }
+ );
+}
+
+/* ?? MATEMATICA E CIRCUITI */
+
+function mathQuestion(){
+
+ if(circuitDone>=3){
+  showMessage("Hai già completato i circuiti!");
+  return;
+ }
+
+ const qs=[
+
+ {
+  q:"CIRCUITO AND – A=1 e B=0. Entrambi devono essere ON. Qual è l'uscita?",
+  a:["0 – Spenta","1 – Accesa","2"],
+  correct:0
+ },
+
+ {
+  q:"CIRCUITO OR – A=0 e B=1. Basta un interruttore acceso. Risultato?",
+  a:["0","1","2"],
+  correct:1
+ },
+
+ {
+  q:"CIRCUITO NOT – Inverte il valore. Se l'ingresso è 1, quale sarà l'uscita?",
+  a:["1","0","3"],
+  correct:1
+ },
+
+ {
+  q:"Hai 4 lampade. Ogni lampada usa 3 unità di energia. Quanta energia serve?",
+  a:["7","12","16"],
+  correct:1
+ },
+
+ {
+  q:"Un circuito ha 2 interruttori. Quante combinazioni possibili ci sono?",
+  a:["2","3","4"],
+  correct:2
+ }
+
+ ];
+
+ const q=qs[Math.floor(Math.random()*qs.length)];
+
+ openModal(
+  "?? MATEMATICA – REDSTONE LAB",
+  q.q,
+  q.a,
+  i=>{
+
+   if(i===q.correct){
+
+    circuitDone++;
+
+    showResult(true,"Circuito funzionante! +30 XP");
+
+    if(circuitDone>=3){
+
+     stage=3;
+
+     xp+=150;
+
+     feedback.textContent=
+      "?? TUTTE LE MISSIONI COMPLETATE!";
+
+    }
+
+   }else{
+
+    showResult(false,
+    "Circuito non funzionante. Riprova!");
+
+   }
+
+   updateHUD();
+
+  }
+ );
+}
+
+/* INTERAZIONE CON PERSONAGGI */
+
+function interact(){
+
+ if(!locked)return;
+
+ const p=camera.position;
+
+ const distance=(x,z)=>
+ Math.hypot(p.x-x,p.z-z);
+
+ if(stage===0){
+
+  if(distance(6,5)<6){
+
+   if(placedHouse>=20){
+
+    stage=1;
+
+    updateHUD();
+
+    showMessage("Missione inglese completata!");
+
+   }else{
+
+    showMessage(
+     "Build your house! Place at least 20 blocks."
+    );
+
+   }
+
+  }else{
+
+   showMessage("Esplora il mondo e costruisci la casa!");
+
+  }
+
+  return;
+ }
+
+ if(stage===1&&distance(-8,-3)<3.5){
+
+  spanishQuestion();
+
+  return;
+ }
+
+ if(stage===2&&distance(8,-8)<4){
+
+  mathQuestion();
+
+  return;
+ }
+
+ if(distance(-8,-3)<3.5){
+
+  showMessage("¡Hola! Completa le missioni del villaggio.");
+
+ }else if(distance(8,-8)<4){
+
+  showMessage("Benvenuto nel laboratorio Redstone!");
+
+ }else{
+
+  showMessage("Non c'è nessuno con cui parlare qui.");
+
+ }
+}
+
+/* ANIMAZIONE 3D */
+
+let previous=performance.now();
+
+function animate(now){
+
+ requestAnimationFrame(animate);
+
+ const dt=Math.min((now-previous)/1000,.04);
+
+ previous=now;
+
+ if(locked){
+  movePlayer(dt);
+ }
+
+ renderer.render(scene,camera);
+}
+
+requestAnimationFrame(animate);
+
+/* ADATTAMENTO SCHERMO */
+
+window.addEventListener("resize",()=>{
+
+ camera.aspect=innerWidth/innerHeight;
+
+ camera.updateProjectionMatrix();
+
+ renderer.setSize(innerWidth,innerHeight);
+
+});
+
+/* AVVIO */
+
+updateHUD();
+
+renderHotbar();
+
+</script>
+</body>
+</html>
